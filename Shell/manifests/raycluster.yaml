@@ -1,0 +1,65 @@
+# RayCluster Configuration
+# 
+# This manifest defines a Ray cluster with:
+# - 1 Head node (dashboard, GCS)
+# - 1 Worker node (autoscales 0-2)
+#
+# Image is configured via environment variable or default:
+#   RAY_IMAGE=localhost:5001/ray:2.53.0
+#
+# Usage:
+#   kubectl apply -f manifests/raycluster.yaml
+#   kubectl delete -f manifests/raycluster.yaml
+
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: ray-local
+spec:
+  rayVersion: '2.53.0'
+  
+  # Head node configuration
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: localhost:5001/ray:2.53.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
+  
+  # Worker nodes configuration
+  workerGroupSpecs:
+  - replicas: 1
+    minReplicas: 0
+    maxReplicas: 2
+    groupName: workers
+    rayStartParams: {}
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: localhost:5001/ray:2.53.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+            requests:
+              cpu: "500m"
+              memory: "512Mi"

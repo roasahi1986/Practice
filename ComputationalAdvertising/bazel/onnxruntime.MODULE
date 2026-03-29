@@ -1,0 +1,5 @@
+module(
+  name = "onnxruntime",
+  version = "v1.16.3",
+  compatibility_level = 0,
+)

@@ -1,0 +1,30 @@
+# =============================================================================
+# Features Configuration
+# =============================================================================
+# This file defines individual features (the contracts).
+#
+# Each feature is defined ONCE and can be referenced by any task.
+# This prevents duplication and ensures consistency.
+#
+# The Task config specifies:
+#   - Which features to use (via column_mappings)
+#   - How to map source columns to those features
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Device Features
+# ---------------------------------------------------------------------------
+device_region:
+  dtype: "string"
+  description: "Device region/country code"
+  fill_na: "unknown"
+
+device_os:
+  dtype: "string"
+  description: "Operating system (ios, android)"
+  fill_na: "unknown"
+  rules:
+    format: "lowercase"
+    allowed_values:
+      - "ios"
+      - "android"

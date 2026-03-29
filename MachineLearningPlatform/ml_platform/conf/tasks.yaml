@@ -1,0 +1,357 @@
+# =============================================================================
+# Tasks Configuration
+# =============================================================================
+# This file defines the workloads that can be executed.
+#
+# Key concept: Column Mappings
+# The column_mappings field connects SOURCE columns to individual FEATURES.
+# Features are defined once in features.yaml and referenced by name here.
+#
+# Run a task:
+#   python main.py --task <task_name>
+#
+# Override date range at runtime:
+#   python main.py --task <task_name> --from 2025-11-27 --to 2025-11-28
+#
+# Note: date_range in config is the DEFAULT; CLI args override it.
+#
+# Output Path Template Variables (Jinja2 syntax):
+#   {{ output_root }} - Global output root from _settings
+#   {{ type }}        - Task type (etl, training, visualization, etc.)
+#   {{ name }}        - Task name
+#
+#   Example: path: "{{ output_root }}/{{ type }}/{{ name }}"
+# =============================================================================
+
+# Global settings
+_settings:
+  output_root: "s3://exchange-dev/luxu/project"
+
+# ---------------------------------------------------------------------------
+# ETL Task: Aggregate Hourly Win Price Metrics
+# ---------------------------------------------------------------------------
+# First stage of the RTB feature pipeline:
+#   - Reads raw auction logs
+#   - Filters for is_tpd_winner = true only
+#   - Deduplicates by event_id
+#   - Aggregates win price/count to hourly level
+# ---------------------------------------------------------------------------
+aggregate_hourly_win_price:
+  type: "etl"
+  description: "Aggregate raw auction data to hourly win price metrics"
+
+  input:
+    source: "auction_logs"
+    date_range:
+      from: ~  # Required: provide via --from
+      to: ~    # Required: provide via --to
+    filter_expr: "is_tpd_winner = true"
+
+  params:
+    dedupe_by: "event_id"
+    dedupe_mode: "none"  # Fast: keeps one copy per event_id
+
+    group_by:
+      - "rtb_id"
+      - "supply_name"
+      - "req_pub_app_store_id"
+      - "req_impression_type"
+      - "req_country"
+      - "req_os"
+
+    time_bucket: "hour"
+    time_column: "auction_timestamp"
+
+    aggregations:
+      - source_col: "auction_winner_price"
+        agg_func: "sum"
+        output_col: "hourly_win_price_sum"
+
+      - source_col: "*"
+        agg_func: "count"
+        output_col: "hourly_win_count"
+
+  output:
+    path: "{{ output_root }}/{{ type }}/{{ name }}"
+    format: "parquet"
+    mode: "overwrite"
+    partition_by:
+      - "date"
+      - "hour"
+
+# ---------------------------------------------------------------------------
+# ETL Task: Compute Rolling Win Price Features
+# ---------------------------------------------------------------------------
+# Second stage of the RTB feature pipeline:
+#   - Reads hourly win price metrics (output of aggregate_hourly_win_price)
+#   - Calculates rolling 1h and 3h window features
+#   - Outputs separate files per dimension grouping
+# ---------------------------------------------------------------------------
+compute_rolling_win_price:
+  type: "etl"
+  description: "Calculate rolling 1h/3h win price features from hourly metrics"
+
+  input:
+    source: "aggregate_hourly_win_price"
+    date_range:
+      from: ~  # Required: provide via --from
+      to: ~    # Required: provide via --to
+
+  params:
+    group_by:
+      - "rtb_id"
+      - "supply_name"
+      - "req_pub_app_store_id"
+      - "req_impression_type"
+      - "req_country"
+      - "req_os"
+
+    time_bucket: "hour"
+    time_column: "time_bucket"
+
+    rolling_windows:
+      - name: "1h"
+        lookback_seconds: 3600
+        apply_to:
+          - "hourly_win_price_sum"
+          - "hourly_win_count"
+
+      - name: "3h"
+        lookback_seconds: 10800
+        apply_to:
+          - "hourly_win_price_sum"
+          - "hourly_win_count"
+
+  output:
+    path: "{{ output_root }}/{{ type }}/{{ name }}"
+    format: "parquet"
+    mode: "overwrite"
+    partition_by:
+      - "date"
+      - "hour"
+
+
+# ---------------------------------------------------------------------------
+# ETL Task: Rolling Win Price Features by Publisher (req_pub_app_store_id)
+# ---------------------------------------------------------------------------
+# Computes publisher-level rolling features:
+#   - Reads hourly metrics (output of aggregate_hourly_win_price)
+#   - Aggregates to publisher level (rtb_id + req_pub_app_store_id)
+#   - Calculates rolling 1h and 3h window features
+#
+# Note: Must aggregate BEFORE rolling. Rolling windows only see rows with
+# the same dimensions - summing fine-grained rolling values misses data
+# from dimension combinations that don't appear in every hour.
+# ---------------------------------------------------------------------------
+compute_rolling_win_price_by_publisher:
+  type: "etl"
+  description: "Compute rolling win price features at publisher level"
+
+  input:
+    source: "aggregate_hourly_win_price"
+    date_range:
+      from: ~  # Required: provide via --from
+      to: ~    # Required: provide via --to
+
+  params:
+    group_by:
+      - "rtb_id"
+      - "req_pub_app_store_id"
+
+    time_bucket: "hour"
+    time_column: "time_bucket"
+
+    # Step 1: Aggregate hourly metrics to publisher level
+    aggregations:
+      - source_col: "hourly_win_price_sum"
+        agg_func: "sum"
+        output_col: "hourly_win_price_sum"
+
+      - source_col: "hourly_win_count"
+        agg_func: "sum"
+        output_col: "hourly_win_count"
+
+    # Step 2: Compute rolling windows on the aggregated data
+    rolling_windows:
+      - name: "1h"
+        lookback_seconds: 3600
+        apply_to:
+          - "hourly_win_price_sum"
+          - "hourly_win_count"
+
+      - name: "3h"
+        lookback_seconds: 10800
+        apply_to:
+          - "hourly_win_price_sum"
+          - "hourly_win_count"
+
+  output:
+    path: "{{ output_root }}/{{ type }}/{{ name }}"
+    format: "parquet"
+    mode: "overwrite"
+    partition_by:
+      - "date"
+      - "hour"
+
+
+# ---------------------------------------------------------------------------
+# Enrichment Task: Generate Training Data with RTB Features
+# ---------------------------------------------------------------------------
+# Enriches project_report training data with rolling win price features:
+#   - Reads and aggregates project_report data
+#   - Joins with compute_rolling_win_price_by_publisher features
+#   - Outputs training data with RTB features attached
+#
+# Migrated from: legacy/notebooks/[Data][DynamicRTBFeature][TrainingData].py
+# ---------------------------------------------------------------------------
+generate_training_data_with_dynamic_rtb_features:
+  type: "enrichment"
+  description: "Generate training data decorated with RTB rolling features"
+
+  input:
+    source: "project_report"
+    date_range:
+      from: ~  # Required: provide via --from
+      to: ~    # Required: provide via --to
+    # NOTE: Replace 'YOUR_BUCKET_ID' with the actual project_exp_bucket value
+    filter_expr: >
+      project_exp_bucket = 'YOUR_BUCKET_ID'
+      AND rtb_account_id IS NOT NULL
+      AND rtb_account_id NOT IN (
+        '5bc0e10e25c7d7796ebe8fc0', '5e8e56f8fc8d4200150b3c16',
+        '5f6413c9612b1a0015099993', '5f9b336ea3b86126bbdb3aa1',
+        '60bdc983a982ad0017edb6f7', '63924801f7a526001bc728e2',
+        '66e46b7a0f05bd0011e180e6', '67055dc40f05bd0011e279ae'
+      )
+      AND platform IN ('android', 'iOS')
+
+  params:
+    # Aggregate project_report data before joining
+    group_by:
+      - "date"
+      - "hour"
+      - "project_exp_bucket"
+      - "rtb_account_id"
+      - "rtb_connection_id"
+      - "pub_app_object_id"
+      - "placement_type"
+      - "platform"
+      - "country_code"
+      - "supply_name"
+
+    aggregations:
+      - source_col: "bid_requests"
+        agg_func: "sum"
+        output_col: "bid_requests"
+
+      - source_col: "duplicated_bid_requests"
+        agg_func: "sum"
+        output_col: "multiplied_bid_requests"
+
+      - source_col: "unified_net_rev"
+        agg_func: "sum"
+        output_col: "unr"
+
+    # Join with publisher-level rolling features
+    feature_joins:
+      - source: "compute_rolling_win_price_by_publisher"
+        join_keys:
+          # base column -> feature column
+          date: "date"
+          hour: "hour"
+          rtb_connection_id: "rtb_id"
+          pub_app_object_id: "req_pub_app_store_id"
+        select_cols:
+          - "hourly_win_price_sum_1h"
+          - "hourly_win_count_1h"
+        fill_na: 0.0
+
+  output:
+    path: "{{ output_root }}/{{ type }}/{{ name }}"
+    format: "parquet"
+    mode: "overwrite"
+    partition_by:
+      - "date"
+
+
+# ---------------------------------------------------------------------------
+# Visualization Task: Bid Request Decay Analysis
+# ---------------------------------------------------------------------------
+# Analyzes the distribution of bid requests with time-based decay:
+#   - Reads project_report data
+#   - Aggregates by multiple dimensions
+#   - Applies decay factor based on days to end of date range
+#   - Generates histogram comparisons (original vs decayed)
+#
+# Migrated from: legacy/notebooks/[Sequential][BookWormTree][Train&Test][Decay].py
+# ---------------------------------------------------------------------------
+viz_bid_request_decay_analysis:
+  type: "visualization"
+  description: "Analyze bid request distributions with time-based decay"
+
+  input:
+    source: "project_report"
+    date_range:
+      from: ~  # Required: provide via --from
+      to: ~    # Required: provide via --to
+
+  params:
+    # Aggregate by these dimensions
+    group_by:
+      - "date"
+      - "project_exp_bucket"
+      - "rtb_connection_id"
+      - "supply_name"
+      - "pub_app_object_id"
+      - "country_code"
+      - "placement_type"
+      - "platform"
+
+    aggregations:
+      - source_col: "bid_requests"
+        agg_func: "sum"
+        output_col: "bid_requests"
+
+      - source_col: "duplicated_bid_requests"
+        agg_func: "sum"
+        output_col: "duplicated_bid_requests"
+
+      - source_col: "unified_net_rev"
+        agg_func: "sum"
+        output_col: "unified_net_rev"
+
+    # Compute derived columns
+    derived_columns:
+      - name: "original_bid_requests"
+        expr: "bid_requests - duplicated_bid_requests"
+
+    # Apply time-based decay
+    decay:
+      factor: 0.95  # Decay factor per day
+      date_column: "date"
+      # end_date: uses date_range.to automatically
+      columns:
+        - source: "original_bid_requests"
+          output: "decayed_original_bid_requests"
+        - source: "unified_net_rev"
+          output: "decayed_unified_net_rev"
+
+    # Plot specifications
+    plots:
+      - type: "histogram_comparison"
+        title: "Bid Requests: Original vs Decayed Distribution"
+        columns:
+          - "original_bid_requests"
+          - "decayed_original_bid_requests"
+        bins: 50
+        log_scale: true
+
+      - type: "histogram_comparison"
+        title: "Unified Net Revenue: Original vs Decayed Distribution"
+        columns:
+          - "unified_net_rev"
+          - "decayed_unified_net_rev"
+        bins: 50
+        log_scale: true
+
+  # No output path needed - plots are displayed inline using Plotly

@@ -1,0 +1,162 @@
+# =============================================================================
+# Auction Logs Data Source
+# =============================================================================
+# Main auction logs table containing request, bid, and win information.
+# Used by RTB Feature Generation tasks.
+# =============================================================================
+
+downsampled_auction_logs:
+  type: "hive"
+  path: "hive_prod.lena.ex_exchange_auction_report_sample"
+  description: "Main auction logs table containing request, bid, and win info"
+  time_column: "auction_timestamp"
+  columns:
+    event_id:
+      dtype: "string"
+      description: "Unique event identifier for deduplication"
+
+    auction_timestamp:
+      dtype: "timestamp"
+      description: "Time of the auction event"
+      provides:
+        - "date"
+        - "hour_of_day"
+        - "minute_of_hour"
+
+    qps_exp_name:
+      dtype: "string"
+      description: "QPS experiment name"
+      provides:
+        - "ad_exp_id"
+
+    supply_name:
+      dtype: "string"
+      description: "Supply source name"
+      provides:
+        - "supply_name"
+
+    req_pub_app_store_id:
+      dtype: "string"
+      description: "Publisher identifier"
+      provides:
+        - "supply_publisher_id"
+
+    req_impression_type:
+      dtype: "string"
+      description: "Impression type (banner, video, etc.)"
+      provides:
+        - "supply_impression_type"
+
+    rtb_id:
+      dtype: "string"
+      description: "RTB bidder identifier"
+      provides:
+        - "rtb_connection_id"
+
+    req_country:
+      dtype: "string"
+      format: "iso_3_char"
+      description: "Country code from the request"
+      provides:
+        - "device_region"
+
+    req_os:
+      dtype: "string"
+      description: "Operating system"
+      provides:
+        - "device_os"
+
+    is_tpd_winner:
+      dtype: "boolean"
+      description: "Whether the RTB is the third party winner"
+
+    resp_bid_price:
+      dtype: "double"
+      description: "Bid price from RTB response"
+      provides:
+        - "bid_price"
+
+    auction_winner_price:
+      dtype: "double"
+      description: "Final winning price"
+      provides:
+        - "winner_price"
+
+auction_logs:
+  type: "coba2"
+  path: "coba2.ex_exchange_auction_report_az"
+  description: "Main auction logs table containing request, bid, and win info"
+  time_column: "auction_timestamp"
+  columns:
+    event_id:
+      dtype: "string"
+      description: "Unique event identifier for deduplication"
+
+    auction_timestamp:
+      dtype: "timestamp"
+      description: "Time of the auction event"
+      provides:
+        - "date"
+        - "hour_of_day"
+        - "minute_of_hour"
+
+    qps_exp_name:
+      dtype: "string"
+      description: "QPS experiment name"
+      provides:
+        - "ad_exp_id"
+
+    supply_name:
+      dtype: "string"
+      description: "Supply source name"
+      provides:
+        - "supply_name"
+
+    req_pub_app_store_id:
+      dtype: "string"
+      description: "Publisher identifier"
+      provides:
+        - "supply_publisher_id"
+
+    req_impression_type:
+      dtype: "string"
+      description: "Impression type (banner, video, etc.)"
+      provides:
+        - "supply_impression_type"
+
+    rtb_id:
+      dtype: "string"
+      description: "RTB bidder identifier"
+      provides:
+        - "rtb_connection_id"
+
+    req_country:
+      dtype: "string"
+      format: "iso_3_char"
+      description: "Country code from the request"
+      provides:
+        - "device_region"
+
+    req_os:
+      dtype: "string"
+      description: "Operating system"
+      provides:
+        - "device_os"
+
+    is_tpd_winner:
+      dtype: "boolean"
+      description: "Whether the RTB is the third party winner"
+
+    resp_bid_price:
+      dtype: "double"
+      description: "Bid price from RTB response"
+      provides:
+        - "bid_price"
+
+    auction_winner_price:
+      dtype: "double"
+      description: "Final winning price"
+      provides:
+        - "winner_price"
+
+

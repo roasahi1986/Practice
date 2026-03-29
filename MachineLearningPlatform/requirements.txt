@@ -1,0 +1,27 @@
+# PySpark
+pyspark>=3.4.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+pandera>=0.17.0
+
+# Configuration & Validation
+pydantic>=2.0.0
+pyyaml>=6.0
+jinja2>=3.1.0
+
+# Visualization
+plotly>=5.15.0
+
+# Scientific Computing
+scipy>=1.11.0
+
+# AWS
+boto3>=1.28.0
+
+# Country utilities
+pycountry>=22.3.5
+
+# Databricks SDK (for local development compatibility)
+databricks-sdk>=0.12.0

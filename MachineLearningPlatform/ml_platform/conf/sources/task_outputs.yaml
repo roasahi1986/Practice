@@ -1,0 +1,172 @@
+# =============================================================================
+# Task Outputs
+# =============================================================================
+# This file defines sources that are PRODUCED by tasks (not external data).
+# Convention: Source name matches the task name that produces it.
+#
+# These are intermediate/derived datasets that connect pipeline stages.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Output of: aggregate_hourly_win_price
+# Input to:  compute_rolling_win_price
+# ---------------------------------------------------------------------------
+aggregate_hourly_win_price:
+  type: "s3_parquet"
+  path: "s3://exchange-dev/luxu/project/etl/aggregate_hourly_win_price"
+  description: "Hourly aggregated win price metrics (output of aggregate_hourly_win_price task)"
+  time_column: "time_bucket"
+  columns:
+    time_bucket:
+      dtype: "timestamp"
+      description: "Hour bucket for aggregation"
+
+    rtb_id:
+      dtype: "string"
+      description: "RTB bidder identifier"
+
+    supply_name:
+      dtype: "string"
+      description: "Supply source name"
+
+    req_pub_app_store_id:
+      dtype: "string"
+      description: "Publisher app store identifier"
+
+    req_impression_type:
+      dtype: "string"
+      description: "Impression type"
+
+    req_country:
+      dtype: "string"
+      description: "Country code"
+
+    req_os:
+      dtype: "string"
+      description: "Operating system"
+
+    hourly_win_price_sum:
+      dtype: "double"
+      description: "Sum of win prices in the hour"
+
+    hourly_win_count:
+      dtype: "long"
+      description: "Count of wins in the hour"
+
+# ---------------------------------------------------------------------------
+# Output of: compute_rolling_win_price
+# Input to:  downstream training or visualization tasks
+# ---------------------------------------------------------------------------
+compute_rolling_win_price:
+  type: "s3_parquet"
+  path: "s3://exchange-dev/luxu/project/etl/compute_rolling_win_price"
+  description: "Rolling 1h/3h win price features (output of compute_rolling_win_price task)"
+  time_column: "time_bucket"
+  columns:
+    time_bucket:
+      dtype: "timestamp"
+      description: "Hour bucket for the rolling window calculation"
+
+    rtb_id:
+      dtype: "string"
+      description: "RTB bidder identifier"
+
+    supply_name:
+      dtype: "string"
+      description: "Supply source name"
+
+    req_pub_app_store_id:
+      dtype: "string"
+      description: "Publisher app store identifier"
+
+    req_impression_type:
+      dtype: "string"
+      description: "Impression type"
+
+    req_country:
+      dtype: "string"
+      description: "Country code"
+
+    req_os:
+      dtype: "string"
+      description: "Operating system"
+
+    hourly_win_price_sum_1h:
+      dtype: "double"
+      description: "Rolling 1-hour sum of win prices"
+
+    hourly_win_count_1h:
+      dtype: "long"
+      description: "Rolling 1-hour count of wins"
+
+    hourly_win_price_sum_3h:
+      dtype: "double"
+      description: "Rolling 3-hour sum of win prices"
+
+    hourly_win_count_3h:
+      dtype: "long"
+      description: "Rolling 3-hour count of wins"
+
+    # Partition columns (auto-derived from time_bucket)
+    date:
+      dtype: "string"
+      description: "Date partition (yyyy-MM-dd)"
+
+    hour:
+      dtype: "string"
+      description: "Hour partition (HH)"
+
+# ---------------------------------------------------------------------------
+# Output of: compute_rolling_win_price_by_publisher
+# Input to:  downstream training or visualization tasks
+# ---------------------------------------------------------------------------
+compute_rolling_win_price_by_publisher:
+  type: "s3_parquet"
+  path: "s3://exchange-dev/luxu/project/etl/compute_rolling_win_price_by_publisher"
+  description: "Publisher-level rolling 1h/3h win price features"
+  time_column: "time_bucket"
+  columns:
+    time_bucket:
+      dtype: "timestamp"
+      description: "Hour bucket for the rolling window calculation"
+
+    rtb_id:
+      dtype: "string"
+      description: "RTB bidder identifier"
+
+    req_pub_app_store_id:
+      dtype: "string"
+      description: "Publisher app store identifier"
+
+    hourly_win_price_sum:
+      dtype: "double"
+      description: "Aggregated sum of win prices at publisher level"
+
+    hourly_win_count:
+      dtype: "long"
+      description: "Aggregated count of wins at publisher level"
+
+    hourly_win_price_sum_1h:
+      dtype: "double"
+      description: "Rolling 1-hour sum of win prices"
+
+    hourly_win_count_1h:
+      dtype: "long"
+      description: "Rolling 1-hour count of wins"
+
+    hourly_win_price_sum_3h:
+      dtype: "double"
+      description: "Rolling 3-hour sum of win prices"
+
+    hourly_win_count_3h:
+      dtype: "long"
+      description: "Rolling 3-hour count of wins"
+
+    # Partition columns (auto-derived from time_bucket)
+    date:
+      dtype: "string"
+      description: "Date partition (yyyy-MM-dd)"
+
+    hour:
+      dtype: "string"
+      description: "Hour partition (HH)"

@@ -1,0 +1,5 @@
+module(
+  name = "com_github_gflags_gflags",
+  version = "v2.2.2",
+  compatibility_level = 0
+)

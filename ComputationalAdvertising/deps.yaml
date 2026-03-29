@@ -1,0 +1,128 @@
+# Dependency Configuration
+# This file defines all third-party dependencies with their versions and sources.
+# Use `script/check_deps.py` to compare with latest versions.
+
+dependencies:
+  # Build Tools
+  - name: bazelisk
+    github: bazelbuild/bazelisk
+    version: "1.28.1"
+    type: binary
+
+  - name: cmake
+    github: Kitware/CMake
+    version: "3.31.0"
+    type: source
+
+  - name: llvm
+    github: llvm/llvm-project
+    version: "21.1.6"
+    type: binary
+    # Pre-built binaries available at:
+    # https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/clang+llvm-{version}-{arch}-linux-gnu-ubuntu-{ubuntu_version}.tar.xz
+
+  # Bazel Rules
+  - name: bazel-skylib
+    github: bazelbuild/bazel-skylib
+    version: "1.9.0"
+    type: bazel_rule
+
+  - name: rules_pkg
+    github: bazelbuild/rules_pkg
+    version: "1.2.0"
+    type: bazel_rule
+
+  - name: rules_foreign_cc
+    github: bazelbuild/rules_foreign_cc
+    version: "0.15.1"
+    type: bazel_rule
+
+  - name: rules_perl
+    github: bazelbuild/rules_perl
+    version: "0.6.0"
+    type: bazel_rule
+
+  - name: rules_python
+    github: bazelbuild/rules_python
+    version: "1.5.0"
+    type: bazel_rule
+
+  - name: rules_apple
+    github: bazelbuild/rules_apple
+    version: "3.0.0"
+    type: bazel_rule
+
+  - name: rules_fuzzing
+    github: bazelbuild/rules_fuzzing
+    version: "0.6.0"
+    type: bazel_rule
+
+  # Google Libraries
+  - name: gflags
+    github: gflags/gflags
+    version: "2.3.0"
+    type: cmake
+
+  - name: glog
+    github: google/glog
+    version: "0.7.1"
+    type: cmake
+
+  - name: googletest
+    github: google/googletest
+    version: "1.15.0"
+    type: cmake
+
+  - name: benchmark
+    github: google/benchmark
+    version: "1.9.5"
+    type: cmake
+
+  - name: tcmalloc
+    github: google/tcmalloc
+    version: "latest"
+    type: source
+
+  # Protocol Buffers & Abseil
+  - name: protobuf
+    github: protocolbuffers/protobuf
+    version: "33.5"
+    type: cmake
+
+  # ML Frameworks
+  - name: tensorflow
+    github: tensorflow/tensorflow
+    version: "2.20.0"
+    type: bazel
+
+  - name: onnxruntime
+    github: microsoft/onnxruntime
+    version: "1.23.2"
+    type: cmake
+
+  - name: tvm
+    github: apache/tvm
+    version: "0.22.0"
+    type: cmake
+
+  # Intel Libraries
+  - name: mkl-dnn
+    github: intel/mkl-dnn
+    version: "3.10.2"
+    type: cmake
+
+  # Utility Libraries
+  - name: nlohmann-json
+    github: nlohmann/json
+    version: "3.12.0"
+    type: cmake
+
+  - name: thread-pool
+    github: bshoshany/thread-pool
+    version: "5.1.0"
+    type: header_only
+
+  - name: jemalloc
+    github: jemalloc/jemalloc
+    version: "5.3.0"
+    type: autotools

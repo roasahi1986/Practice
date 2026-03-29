@@ -1,0 +1,33 @@
+syntax = "proto3";
+package model_server;
+
+// option cc_enable_arenas = true;
+// option cc_generic_services = true;
+
+message PerfIndex {
+  float cpu_usage   = 1;
+  float mem_usage   = 2;
+  float cost_avg_ms = 3;
+  float cost_p99_ms = 4;
+  float throughput  = 5;
+};
+
+message PerfConf {
+  int32 concurrency  = 1;
+  int32 request_size = 2;
+  int32 jit_on       = 3;
+  int32 inter_op     = 4;
+  int32 intra_op     = 5;
+  string runtime     = 6;
+};
+
+message PerfItem {
+  PerfConf  conf = 1;
+  PerfIndex index = 2;
+};
+
+message PerfSummary {
+  string            name = 1;
+  repeated PerfItem item = 2;
+  int32             best_item = 3;
+};

@@ -1,0 +1,377 @@
+# Combined Dockerfile: Download + Build in one multi-stage build
+# Usage: docker build -t computationaladvertising/build-base:latest -f docker/Dockerfile.combined .
+#
+# All versions are read from deps.yaml via build arguments
+
+# ============================================================================
+# Stage 1: Download all dependencies
+# ============================================================================
+FROM ubuntu:24.04 AS download
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HOME=/root
+ENV PATH="${HOME}/.local/bin:${HOME}/.local/cmake/bin:${PATH}"
+
+# Version Arguments (passed from deps.yaml)
+ARG BAZELISK_VERSION=1.28.1
+ARG CMAKE_VERSION=3.31.0
+ARG LLVM_VERSION=21.1.6
+ARG BAZEL_SKYLIB_VERSION=1.9.0
+ARG RULES_PKG_VERSION=1.2.0
+ARG RULES_FOREIGN_CC_VERSION=0.15.1
+ARG RULES_PERL_VERSION=0.6.0
+ARG RULES_PYTHON_VERSION=1.5.0
+ARG RULES_APPLE_VERSION=3.0.0
+ARG RULES_FUZZING_VERSION=0.6.0
+ARG GFLAGS_VERSION=2.3.0
+ARG GLOG_VERSION=0.7.1
+ARG GOOGLETEST_VERSION=1.15.0
+ARG BENCHMARK_VERSION=1.9.5
+ARG PROTOBUF_VERSION=33.5
+ARG TENSORFLOW_VERSION=2.20.0
+ARG ONNXRUNTIME_VERSION=1.23.2
+ARG NLOHMANN_JSON_VERSION=3.12.0
+ARG THREAD_POOL_VERSION=5.1.0
+ARG JEMALLOC_VERSION=5.3.0
+ARG BUILD_JOBS=4
+
+# Install packages needed for downloading and building
+RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    curl \
+    gnupg \
+    git \
+    ca-certificates \
+    lsb-release \
+    software-properties-common \
+    python3 \
+    python3-pip \
+    python3-numpy \
+    build-essential \
+    openjdk-11-jdk \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    libcurl4-openssl-dev \
+    libcppunit-dev \
+    libunwind-dev \
+    libevent-dev \
+    libsasl2-dev \
+    libzstd-dev \
+    libssl-dev \
+    libbz2-dev \
+    liblz4-dev \
+    zlib1g-dev \
+    binutils-dev \
+    libsqlite3-dev \
+    liblzma-dev \
+    libreadline-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directories
+RUN mkdir -p ${HOME}/.local/bin ${HOME}/.local/lib ${HOME}/.local/build ${HOME}/.local/downloads
+
+# Download binary dependencies
+RUN curl -fsSL https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-linux-amd64 \
+    -o ${HOME}/.local/downloads/bazelisk-linux-amd64
+
+RUN curl -fsSL https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz \
+    -o ${HOME}/.local/downloads/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz
+
+RUN curl -fsSL https://raw.githubusercontent.com/cpplint/cpplint/master/cpplint.py \
+    -o ${HOME}/.local/downloads/cpplint.py
+
+RUN curl -fsSL https://zlib.net/zlib-1.3.1.tar.gz \
+    -o ${HOME}/.local/downloads/zlib-1.3.1.tar.gz
+
+# Clone git repositories
+WORKDIR ${HOME}/.local/downloads
+
+RUN git clone --depth 1 --branch v${GFLAGS_VERSION} https://github.com/gflags/gflags.git
+RUN git clone --depth 1 --branch v${GLOG_VERSION} https://github.com/google/glog.git
+RUN git clone --depth 1 --branch v${GOOGLETEST_VERSION} https://github.com/google/googletest.git
+RUN git clone --depth 1 --branch v${BENCHMARK_VERSION} https://github.com/google/benchmark.git
+RUN git clone --depth 1 --branch v${NLOHMANN_JSON_VERSION} https://github.com/nlohmann/json.git
+RUN git clone --depth 1 --branch v${THREAD_POOL_VERSION} https://github.com/bshoshany/thread-pool.git
+RUN git clone --depth 1 --branch ${JEMALLOC_VERSION} https://github.com/jemalloc/jemalloc.git
+RUN git clone --depth 1 --branch 20240722.0 https://github.com/abseil/abseil-cpp.git
+
+# Bazel rules
+RUN git clone --depth 1 --branch ${BAZEL_SKYLIB_VERSION} https://github.com/bazelbuild/bazel-skylib.git
+RUN git clone --depth 1 --branch ${RULES_PKG_VERSION} https://github.com/bazelbuild/rules_pkg.git
+RUN git clone --depth 1 --branch ${RULES_FOREIGN_CC_VERSION} https://github.com/bazelbuild/rules_foreign_cc.git
+RUN git clone --depth 1 --branch ${RULES_PERL_VERSION} https://github.com/bazelbuild/rules_perl.git
+RUN git clone --depth 1 --branch ${RULES_PYTHON_VERSION} https://github.com/bazelbuild/rules_python.git
+RUN git clone --depth 1 --branch v${RULES_FUZZING_VERSION} https://github.com/bazelbuild/rules_fuzzing.git
+
+# Protobuf
+RUN git clone --depth 1 --branch v${PROTOBUF_VERSION} https://github.com/protocolbuffers/protobuf.git && \
+    cd protobuf && git submodule update --init --recursive
+
+# Large repositories
+RUN echo "Cloning TensorFlow ${TENSORFLOW_VERSION}..." && \
+    git clone --branch v${TENSORFLOW_VERSION} --depth 1 https://github.com/tensorflow/tensorflow.git
+
+RUN echo "Cloning ONNX Runtime ${ONNXRUNTIME_VERSION}..." && \
+    git clone --branch v${ONNXRUNTIME_VERSION} --recursive https://github.com/microsoft/onnxruntime.git
+
+# Install Clang from official LLVM releases
+RUN curl -fsSL https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-Linux-X64.tar.xz \
+    -o /tmp/clang-llvm.tar.xz && \
+    mkdir -p /usr/local/llvm && \
+    tar -xf /tmp/clang-llvm.tar.xz -C /usr/local/llvm --strip-components=1 && \
+    rm /tmp/clang-llvm.tar.xz && \
+    ln -sf /usr/local/llvm/bin/clang /usr/bin/clang && \
+    ln -sf /usr/local/llvm/bin/clang++ /usr/bin/clang++ && \
+    ln -sf /usr/local/llvm/bin/lld /usr/bin/lld && \
+    ln -sf /usr/local/llvm/bin/ld.lld /usr/bin/ld.lld && \
+    ln -sf /usr/local/llvm/bin/clang-format /usr/bin/clang-format && \
+    ln -sf /usr/local/llvm/bin/clang-tidy /usr/bin/clang-tidy
+
+# Install Bazelisk
+RUN curl -fsSL https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-linux-amd64 \
+    -o /usr/local/bin/bazelisk && \
+    chmod +x /usr/local/bin/bazelisk && \
+    ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
+
+# Configure TensorFlow
+WORKDIR ${HOME}/.local/downloads/tensorflow
+ENV TF_NEED_CUDA=0
+ENV TF_NEED_ROCM=0
+ENV TF_NEED_OPENCL_SYCL=0
+ENV TF_NEED_MPI=0
+ENV TF_SET_ANDROID_WORKSPACE=0
+ENV CC_OPT_FLAGS="-march=native"
+ENV CLANG_COMPILER_PATH=/usr/local/llvm/bin/clang
+
+RUN yes '' | ./configure
+
+# ============================================================================
+# Stage 2: Build everything
+# ============================================================================
+FROM download AS builder
+
+ARG CMAKE_VERSION=3.31.0
+ARG TENSORFLOW_VERSION=2.20.0
+ARG BUILD_JOBS=4
+
+ENV HOME=/root
+ENV PATH="${HOME}/.local/bin:${HOME}/.local/cmake/bin:${PATH}"
+
+# Create build directories
+RUN mkdir -p ${HOME}/.local/bin ${HOME}/.local/lib ${HOME}/.local/build
+
+# Install binary tools
+RUN cp ${HOME}/.local/downloads/bazelisk-linux-amd64 ${HOME}/.local/bin/bazelisk && \
+    chmod +x ${HOME}/.local/bin/bazelisk && \
+    ln -sf ${HOME}/.local/bin/bazelisk ${HOME}/.local/bin/bazel
+
+RUN cd ${HOME}/.local && \
+    tar xzf ${HOME}/.local/downloads/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
+    mv cmake-${CMAKE_VERSION}-linux-x86_64 ${HOME}/.local/cmake
+
+RUN cp ${HOME}/.local/downloads/cpplint.py ${HOME}/.local/bin/cpplint.py && \
+    chmod +x ${HOME}/.local/bin/cpplint.py
+
+# Build small dependencies
+RUN cd ${HOME}/.local/downloads/gflags && \
+    cmake -DCMAKE_INSTALL_PREFIX=${HOME}/.local/lib/gflags \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_FLAGS="-fPIC" \
+          -S . -B build && \
+    cmake --build build -j${BUILD_JOBS} && \
+    cmake --build build --target install
+
+RUN cd ${HOME}/.local/downloads/glog && \
+    cmake -DCMAKE_INSTALL_PREFIX=${HOME}/.local/lib/glog \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -S . -B build && \
+    cmake --build build -j${BUILD_JOBS} && \
+    cmake --build build --target install
+
+RUN cd ${HOME}/.local/downloads/googletest && \
+    cmake -DCMAKE_INSTALL_PREFIX=${HOME}/.local/lib/googletest \
+          -DCMAKE_BUILD_TYPE=Release \
+          -S . -B build && \
+    cmake --build build -j${BUILD_JOBS} && \
+    cmake --build build --target install
+
+RUN cd ${HOME}/.local/downloads/benchmark && \
+    cmake -DCMAKE_INSTALL_PREFIX=${HOME}/.local/lib/benchmark \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBENCHMARK_ENABLE_TESTING=OFF \
+          -S . -B build && \
+    cmake --build build -j${BUILD_JOBS} && \
+    cmake --build build --target install
+
+RUN cd ${HOME}/.local/downloads/json && \
+    cmake -DCMAKE_INSTALL_PREFIX=${HOME}/.local/lib/nlohmann_json \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DJSON_BuildTests=OFF \
+          -S . -B build && \
+    cmake --build build -j${BUILD_JOBS} && \
+    cmake --build build --target install
+
+RUN mkdir -p ${HOME}/.local/lib/bs_thread_pool/include/BShoshany && \
+    cp -r ${HOME}/.local/downloads/thread-pool/include/* ${HOME}/.local/lib/bs_thread_pool/include/BShoshany
+
+RUN cd ${HOME}/.local/downloads/jemalloc && \
+    ./autogen.sh && \
+    ./configure --prefix=${HOME}/.local/lib/jemalloc && \
+    make -j${BUILD_JOBS} && make install
+
+RUN cd ${HOME}/.local/downloads/abseil-cpp && \
+    cmake -DCMAKE_INSTALL_PREFIX=${HOME}/.local/lib/absl \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_STANDARD=20 \
+          -DABSL_BUILD_TESTING=OFF \
+          -S . -B build && \
+    cmake --build build -j${BUILD_JOBS} && \
+    cmake --build build --target install
+
+RUN cd ${HOME}/.local && \
+    tar xzf ${HOME}/.local/downloads/zlib-1.3.1.tar.gz && \
+    cd zlib-1.3.1 && \
+    ./configure --prefix=${HOME}/.local/lib/zlib && \
+    make -j${BUILD_JOBS} && make install && \
+    rm -rf ${HOME}/.local/zlib-1.3.1
+
+# Install Bazel rules
+RUN mv ${HOME}/.local/downloads/bazel-skylib ${HOME}/.local/lib/bazel-skylib && \
+    mv ${HOME}/.local/downloads/rules_pkg ${HOME}/.local/lib/rules_pkg && \
+    mv ${HOME}/.local/downloads/rules_foreign_cc ${HOME}/.local/lib/rules_foreign_cc && \
+    mv ${HOME}/.local/downloads/rules_perl ${HOME}/.local/lib/rules_perl && \
+    mv ${HOME}/.local/downloads/rules_python ${HOME}/.local/lib/rules_python && \
+    mv ${HOME}/.local/downloads/rules_fuzzing ${HOME}/.local/lib/rules_fuzzing
+
+# Build TensorFlow
+RUN mv ${HOME}/.local/downloads/tensorflow ${HOME}/.local/build/tensorflow
+
+WORKDIR ${HOME}/.local/build/tensorflow
+
+# Disable pywrap rules to enable tensorflow_cc shared library target
+# Default .bazelrc has: build --repo_env=USE_PYWRAP_RULES=True
+# This causes tf_cc_shared_library macro to skip creating the actual .so file
+# IMPORTANT: Must DELETE the line, not change to "False", because bool("False") == True in Python!
+RUN sed -i '/USE_PYWRAP_RULES/d' .bazelrc && \
+    echo "=== Verifying USE_PYWRAP_RULES removed ===" && \
+    grep -n "USE_PYWRAP_RULES" .bazelrc || echo "USE_PYWRAP_RULES line successfully removed"
+
+RUN yes '' | ./configure
+
+# Pre-fetch all Bazel dependencies (separate layer for better caching)
+# This downloads all external dependencies without building, so that
+# the actual build step can reuse cached dependencies
+RUN echo "Pre-fetching TensorFlow build dependencies..." && \
+    bazelisk fetch \
+        --config=monolithic \
+        --config=mkl \
+        --config=nogcp \
+        --config=nonccl \
+        //tensorflow:tensorflow_cc \
+        //tensorflow:install_headers && \
+    echo "Dependencies fetched successfully"
+
+# Build TensorFlow with memory-constrained settings for CI
+# Using low parallelism to avoid OOM on GitHub Actions (7GB RAM)
+# Note: TensorFlow 2.20+ build targets:
+#   - C++ API: //tensorflow:tensorflow_cc (generates libtensorflow_cc.so, includes framework)
+#   - Headers: //tensorflow:install_headers
+# Enabled: --config=mkl for oneDNN/MKL acceleration on x86_64 CPUs
+RUN echo "Starting TensorFlow build with BUILD_JOBS=${BUILD_JOBS}..." && \
+    bazelisk build \
+        --jobs=${BUILD_JOBS} \
+        --local_ram_resources=4096 \
+        --local_cpu_resources=2 \
+        --compilation_mode=opt \
+        --config=monolithic \
+        --config=mkl \
+        --config=nogcp \
+        --config=nonccl \
+        --copt=-fpermissive \
+        --copt=-Wno-error \
+        --copt=-Wno-c23-extensions \
+        --conlyopt=-Wno-c23-extensions \
+        --verbose_failures \
+        //tensorflow:tensorflow_cc \
+        //tensorflow:install_headers
+
+# Install TensorFlow libraries
+RUN mkdir -p ${HOME}/.local/lib/libtensorflow/lib && \
+    mkdir -p ${HOME}/.local/lib/libtensorflow/include && \
+    find bazel-bin/tensorflow -maxdepth 1 -name "libtensorflow*.so*" -exec cp {} ${HOME}/.local/lib/libtensorflow/lib/ \; && \
+    cd ${HOME}/.local/lib/libtensorflow/lib && \
+    for f in libtensorflow_cc.so.2.* libtensorflow_framework.so.2.*; do \
+        if [ -f "$f" ]; then \
+            base="${f%.2.*}"; \
+            ln -sf "$f" "${base}.2"; \
+            ln -sf "${base}.2" "${base}"; \
+        fi; \
+    done
+
+# Copy headers from install_headers target
+RUN cp -r bazel-bin/tensorflow/include/* ${HOME}/.local/lib/libtensorflow/include/ || true && \
+    mkdir -p ${HOME}/.local/lib/libtensorflow/include/tensorflow/core/protobuf && \
+    mkdir -p ${HOME}/.local/lib/libtensorflow/include/tensorflow/core/framework && \
+    cp -r bazel-bin/tensorflow/core/protobuf/* ${HOME}/.local/lib/libtensorflow/include/tensorflow/core/protobuf/ || true && \
+    cp -r bazel-bin/tensorflow/core/framework/* ${HOME}/.local/lib/libtensorflow/include/tensorflow/core/framework/ || true
+
+# Copy additional headers from source
+RUN find tensorflow/c tensorflow/cc tensorflow/core -name "*.h" -exec cp --parents {} ${HOME}/.local/lib/libtensorflow/include \; && \
+    if [ -d third_party/xla/third_party/tsl ]; then \
+        cd third_party/xla/third_party/tsl && \
+        find tsl -name "*.h" -exec cp --parents {} ${HOME}/.local/lib/libtensorflow/include \; ; \
+    fi
+
+WORKDIR ${HOME}/.local/build/tensorflow
+RUN if [ -d bazel-bin/external/local_tsl/tsl ]; then \
+        mkdir -p ${HOME}/.local/lib/libtensorflow/include/tsl && \
+        cp -r bazel-bin/external/local_tsl/tsl/* ${HOME}/.local/lib/libtensorflow/include/tsl/ || true; \
+    fi && \
+    if [ -d bazel-bin/tensorflow/include/_virtual_includes ]; then \
+        cp -r bazel-bin/tensorflow/include/_virtual_includes/*/ml_dtypes ${HOME}/.local/lib/libtensorflow/include/ 2>/dev/null || true; \
+    fi && \
+    if [ -d bazel-bin/tensorflow/include/Eigen ]; then \
+        cp -r bazel-bin/tensorflow/include/Eigen ${HOME}/.local/lib/libtensorflow/include/; \
+    fi && \
+    if [ -d bazel-bin/tensorflow/include/unsupported ]; then \
+        cp -r bazel-bin/tensorflow/include/unsupported ${HOME}/.local/lib/libtensorflow/include/; \
+    fi
+
+WORKDIR ${HOME}
+RUN rm -rf ${HOME}/.local/build/tensorflow ${HOME}/.cache/bazel
+
+# Build Protobuf
+RUN cd ${HOME}/.local/downloads/protobuf && \
+    cmake -DCMAKE_INSTALL_PREFIX=${HOME}/.local/lib/protobuf \
+          -Dprotobuf_BUILD_TESTS=OFF \
+          -Dprotobuf_ABSL_PROVIDER=package \
+          -DCMAKE_PREFIX_PATH=${HOME}/.local/lib/absl \
+          -DCMAKE_BUILD_TYPE=Release \
+          -S . -B build && \
+    cmake --build build -j${BUILD_JOBS} && \
+    cmake --build build --target install && \
+    mv ${HOME}/.local/downloads/protobuf ${HOME}/.local/lib/protobuf-src
+
+# Build ONNX Runtime
+RUN mv ${HOME}/.local/downloads/onnxruntime ${HOME}/.local/build/onnxruntime && \
+    cd ${HOME}/.local/build/onnxruntime && \
+    ./build.sh --config Release --parallel ${BUILD_JOBS} --build_shared_lib \
+               --compile_no_warning_as_error \
+               --allow_running_as_root \
+               --skip_tests \
+               --cmake_extra_defines CMAKE_INSTALL_PREFIX=${HOME}/.local/lib/onnxruntime && \
+    cd build/Linux/Release && make install && \
+    rm -rf ${HOME}/.local/build/onnxruntime
+
+# Final cleanup
+RUN rm -rf ${HOME}/.local/downloads ${HOME}/.local/build/* /tmp/* /var/tmp/*
+
+RUN echo "Build completed at $(date)" > ${HOME}/.local/lib/build_info.txt
+
+LABEL maintainer="lusyu1986@icloud.com"
+LABEL description="Build base image with all dependencies"
+
+WORKDIR /workspace

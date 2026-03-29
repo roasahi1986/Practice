@@ -1,0 +1,11 @@
+module(
+  name = "com_github_google_glog",
+  version = "v0.6.0",
+  compatibility_level = 0,
+)
+
+bazel_dep(name = "com_github_gflags_gflags")
+local_path_override(
+    module_name = "com_github_gflags_gflags",
+    path = "${HOME}/.local/lib/gflags",
+)

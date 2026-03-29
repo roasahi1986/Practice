@@ -1,0 +1,48 @@
+# Packaging artifacts
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local data (keep data/ folder structure but ignore contents)
+data/*.csv
+data/*.parquet
+
+# Spark
+metastore_db/
+derby.log
+spark-warehouse/
+

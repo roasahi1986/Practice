@@ -1,0 +1,318 @@
+# Unified build workflow
+# Handles both base image building and project building in sequence
+#
+# On push to main:
+#   1. Check if base image needs rebuild (based on deps.sh/Dockerfile.base changes)
+#   2. Build base image if needed
+#   3. Build and test the project
+
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_rebuild_base:
+        description: 'Force rebuild base image'
+        required: false
+        default: false
+        type: boolean
+
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+
+env:
+  REGISTRY: ghcr.io
+  BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/computational_advertising/build-base
+  IMAGE_NAME: ${{ github.repository_owner }}/computational_advertising/build-base
+
+jobs:
+  # Step 1: Check if base image needs to be rebuilt
+  check-base-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+      should_build: ${{ steps.decide.outputs.should_build }}
+      dockerfile_hash: ${{ steps.hash.outputs.dockerfile_hash }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if base image exists
+        id: check
+        run: |
+          if docker manifest inspect ${{ env.BASE_IMAGE }}:latest > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Base image exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Base image does not exist"
+          fi
+
+      - name: Calculate Dockerfile hash
+        id: hash
+        run: |
+          # Include both Dockerfiles and deps.yaml in hash calculation
+          HASH=$(cat docker/Dockerfile.download docker/Dockerfile.offline deps.yaml | sha256sum | cut -d' ' -f1 | head -c 12)
+          echo "dockerfile_hash=$HASH" >> $GITHUB_OUTPUT
+          echo "Dockerfile hash: $HASH"
+
+      - name: Check if hash tag exists
+        id: hash_check
+        run: |
+          HASH="${{ steps.hash.outputs.dockerfile_hash }}"
+          if docker manifest inspect ${{ env.BASE_IMAGE }}:$HASH > /dev/null 2>&1; then
+            echo "hash_exists=true" >> $GITHUB_OUTPUT
+            echo "Image with hash $HASH already exists"
+          else
+            echo "hash_exists=false" >> $GITHUB_OUTPUT
+            echo "Image with hash $HASH does not exist"
+          fi
+
+      - name: Decide whether to build base image
+        id: decide
+        run: |
+          FORCE_REBUILD="${{ inputs.force_rebuild_base }}"
+          IMAGE_EXISTS="${{ steps.check.outputs.exists }}"
+          HASH_EXISTS="${{ steps.hash_check.outputs.hash_exists }}"
+          
+          if [[ "$FORCE_REBUILD" == "true" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Force rebuild requested"
+          elif [[ "$IMAGE_EXISTS" == "false" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Image does not exist, will build"
+          elif [[ "$HASH_EXISTS" == "false" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Dockerfile/deps changed, will rebuild"
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "Image is up-to-date, skipping base image build"
+          fi
+
+  # Step 2: Build base image if needed
+  # Uses two-stage build: download stage (with network) -> offline stage (compilation)
+  build-base-image:
+    needs: check-base-image
+    if: needs.check-base-image.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Parse deps.yaml and generate build args
+        id: deps
+        run: |
+          python3 << 'EOF'
+          import yaml
+          import os
+
+          with open('deps.yaml') as f:
+              data = yaml.safe_load(f)
+
+          build_args = []
+          for dep in data.get('dependencies', []):
+              name = dep['name']
+              version = dep['version']
+              # Convert name to ARG format: my-lib -> MY_LIB_VERSION
+              arg_name = name.upper().replace('-', '_') + '_VERSION'
+              build_args.append(f'{arg_name}={version}')
+
+          # Add BUILD_JOBS for CI (use low parallelism to avoid OOM - GitHub runners have 7GB RAM)
+          build_args.append('BUILD_JOBS=2')
+
+          # Write to GitHub output
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              # Join with newlines for multi-line build-args
+              f.write('build_args<<EOF\n')
+              f.write('\n'.join(build_args))
+              f.write('\nEOF\n')
+
+          print(f"Generated {len(build_args)} build arguments")
+          EOF
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.check-base-image.outputs.dockerfile_hash }}
+            type=raw,value={{date 'YYYYMMDD'}}
+
+      # Build base image (download + compile in one multi-stage build)
+      - name: Build and push base image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.base
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            ${{ steps.deps.outputs.build_args }}
+
+  # Step 3: Build the project
+  build:
+    needs: [check-base-image, build-base-image]
+    # Run if:
+    #   - base image already exists AND build-base-image was skipped (no rebuild needed)
+    #   - OR build-base-image succeeded (just built/rebuilt the image)
+    # Do NOT run if build-base-image failed
+    if: |
+      always() &&
+      (
+        (needs.check-base-image.outputs.exists == 'true' && needs.build-base-image.result == 'skipped') ||
+        needs.build-base-image.result == 'success'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/computational_advertising/build-base:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Bazel
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel
+            ~/.cache/bazelisk
+          key: bazel-${{ runner.os }}-${{ hashFiles('**/BUILD', '**/*.bzl', 'WORKSPACE', 'MODULE.bazel') }}
+          restore-keys: |
+            bazel-${{ runner.os }}-
+
+      - name: Setup Bazel configuration
+        run: |
+          # Setup bazel module/workspace for Linux
+          cp bazel/bazel_module MODULE.bazel
+          sed -i "s|\${HOME}|/root|g" MODULE.bazel
+
+      - name: Copy Bazel BUILD files to dependencies
+        shell: bash
+        run: |
+          # Copy BUILD files to dependency directories
+          deps=(absl benchmark bs_thread_pool gflags glog googletest jemalloc libtensorflow nlohmann_json onnxruntime protobuf-src zlib bazel-skylib)
+          for dep in "${deps[@]}"; do
+            dep_name="${dep%-src}"  # Remove -src suffix for BUILD file lookup
+            if [[ -d "/root/.local/lib/${dep}" ]]; then
+              cp -f bazel/${dep_name}.WORKSPACE /root/.local/lib/${dep}/WORKSPACE 2>/dev/null || true
+              cp -f bazel/${dep_name}.BUILD /root/.local/lib/${dep}/BUILD 2>/dev/null || true
+              cp -f bazel/${dep_name}.MODULE /root/.local/lib/${dep}/MODULE.bazel 2>/dev/null || true
+              sed -i "s|\${HOME}|/root|g" /root/.local/lib/${dep}/MODULE.bazel 2>/dev/null || true
+            fi
+          done
+
+      - name: Static code check
+        shell: bash
+        run: |
+          export PATH="/root/.local/bin:${PATH}"
+          srcs=$(find ./src -regex ".*\.\(c\|cc\|cpp\|cxx\|h\|hh\|hpp\|hxx\|inc\)$")
+          python3 /root/.local/bin/cpplint.py --verbose=0 --linelength=120 --counting=detailed --repository=.. ${srcs}
+
+      - name: Build
+        run: |
+          export PATH="/root/.local/bin:${PATH}"
+          bazelisk build \
+            --jobs=10 \
+            --compilation_mode=opt \
+            --cxxopt='-std=c++2a' \
+            --cxxopt='-Wno-unused-parameter' \
+            --cxxopt='-fno-omit-frame-pointer' \
+            --cxxopt='-fPIC' \
+            --define "malloc=jemalloc" \
+            //src/...
+
+      - name: Run unit tests
+        run: |
+          export PATH="/root/.local/bin:${PATH}"
+          bazelisk test \
+            --compilation_mode=opt \
+            --jobs=10 \
+            --test_output=errors \
+            --cxxopt='-std=c++2a' \
+            --cxxopt='-Wno-unused-parameter' \
+            --cxxopt='-fno-omit-frame-pointer' \
+            --cxxopt='-fPIC' \
+            --define "malloc=jemalloc" \
+            //src:test_util \
+            //src:test_tf_engine \
+            //src:test_onnx_engine
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: binaries
+          path: |
+            bazel-bin/src/perf_*
+            bazel-bin/src/read_tf_trace
+          retention-days: 7
+
+  # Show helpful message when base image build failed and doesn't exist
+  base-image-failed:
+    needs: [check-base-image, build-base-image]
+    if: |
+      always() &&
+      needs.check-base-image.outputs.exists == 'false' &&
+      needs.build-base-image.result != 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Base image build failed
+        run: |
+          echo "::error::Base image does not exist and build failed"
+          echo ""
+          echo "Please check the build-base-image job logs for errors."
+          echo "You can also try running the workflow manually with 'force_rebuild_base: true'"
+          exit 1

@@ -1,0 +1,92 @@
+# =============================================================================
+# Project Report Data Source
+# =============================================================================
+# Aggregated report for Project experiments with bid requests and revenue metrics.
+# Used for Experiment Analysis tasks.
+# =============================================================================
+
+project_report:
+  type: "hive"
+  path: "hive_prod.lena.project_report"
+  description: "Aggregated report for Project experiments with bid requests and revenue metrics"
+  time_column: "event_time"
+  columns:
+    event_time:
+      dtype: "timestamp"
+      description: "Event timestamp for the report"
+      provides:
+        - "date"
+        - "hour_of_day"
+        - "minute_of_hour"
+
+    project_exp_bucket:
+      dtype: "string"
+      description: "Project experiment bucket ID"
+      provides:
+        - "ad_exp_id"
+
+    supply_name:
+      dtype: "string"
+      description: "Supply source name"
+      provides:
+        - "supply_name"
+
+    pub_app_object_id:
+      dtype: "string"
+      description: "Publisher identifier"
+      provides:
+        - "supply_publisher_id"
+
+    placement_type:
+      dtype: "string"
+      description: "Ad placement type"
+      provides:
+        - "supply_placement_type"
+
+    rtb_account_id:
+      dtype: "string"
+      description: "RTB account identifier"
+      provides:
+        - "rtb_account_id"
+
+    rtb_connection_id:
+      dtype: "string"
+      description: "RTB connection identifier"
+      provides:
+        - "rtb_connection_id"
+
+    platform:
+      dtype: "string"
+      description: "Platform type (android, iOS)"
+      provides:
+        - "device_os"
+
+    country_code:
+      dtype: "string"
+      format: "iso_2_char"
+      description: "Country code (geo)"
+      provides:
+        - "device_region"
+
+    auction_timeout_bucket:
+      dtype: "int"
+      description: "Auction timeout bucket in milliseconds"
+
+    bid_requests:
+      dtype: "long"
+      description: "Total number of bid requests"
+      provides:
+        - "total_bid_request_count"
+
+    duplicated_bid_requests:
+      dtype: "long"
+      description: "Number of multiplied/duplicated bid requests"
+      provides:
+        - "multiplied_bid_request_count"
+
+    unified_net_rev:
+      dtype: "double"
+      description: "Unified net revenue (UNR)"
+      provides:
+        - "unified_net_revenue"
+

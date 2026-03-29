@@ -1,0 +1,9 @@
+pandas
+numpy
+matplotlib
+ollama
+pytest
+black
+flake8
+streamlit
+plotly

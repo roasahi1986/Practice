@@ -1,0 +1,14 @@
+{
+  "all": {
+    "model1": {
+      "path": "./model1",
+      "version": 2,
+      "multi_version": false
+    },
+    "model2": {
+      "path": "./model2",
+      "version": 1,
+      "multi_version": false
+    }
+  }
+}

@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ml-platform"
+version = "0.1.0"
+description = "Configuration-driven ML Platform for RTB Feature Engineering and Model Training"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Lu Xu"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "pyyaml",
+    "jinja2",
+    "pycountry",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+local = [
+    # For local development - Databricks provides these
+    "pyspark>=3.4.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "boto3>=1.28.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+viz = [
+    "plotly>=5.15.0",
+]
+all = [
+    "ml-platform[local,dev,viz]",
+]
+
+[project.scripts]
+ml-task = "ml_platform.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/xlu/ml-platform"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ml_platform*"]
+
+[tool.setuptools.package-data]
+# Include YAML config files bundled in ml_platform/conf/
+"ml_platform.conf" = ["*.yaml", "sources/*.yaml"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

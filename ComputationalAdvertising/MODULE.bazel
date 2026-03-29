@@ -1,0 +1,113 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+module(
+    name = "model_server",
+    version = "1.0.0",
+    compatibility_level = 0,
+)
+
+#------------------------------ rules_cc ------------------------------#
+bazel_dep(name = "rules_cc", version = "0.0.17")
+
+#----------------------------- rules_proto ----------------------------#
+bazel_dep(name = "rules_proto", version = "7.1.0")
+
+#----------------------------- bazel_skylib ----------------------------#
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
+local_path_override(
+    module_name = "bazel_skylib",
+    path = "${HOME}/.local/lib/bazel-skylib",
+)
+
+#----------------------------- googletest -----------------------------#
+bazel_dep(name = "com_google_googletest")
+local_path_override(
+    module_name = "com_google_googletest",
+    path = "${HOME}/.local/lib/googletest",
+)
+
+#-------------------------- google-benchmark --------------------------#
+bazel_dep(name = "com_github_google_benchmark")
+local_path_override(
+    module_name = "com_github_google_benchmark",
+    path = "${HOME}/.local/lib/benchmark",
+)
+
+#------------------------------- abseil -------------------------------#
+bazel_dep(name = "com_google_absl")
+local_path_override(
+    module_name = "com_google_absl",
+    path = "${HOME}/.local/lib/absl",
+)
+
+#-------------------------------- zlib --------------------------------#
+bazel_dep(name = "com_github_madler_zlib")
+local_path_override(
+    module_name = "com_github_madler_zlib",
+    path = "${HOME}/.local/lib/zlib",
+)
+
+#------------------------------ protobuf ------------------------------#
+bazel_dep(name = "protobuf")
+local_path_override(
+    module_name = "protobuf",
+    path = "${HOME}/.local/lib/protobuf-src",
+)
+
+#---------------------------- nlohmann_json ---------------------------#
+bazel_dep(name = "nlohmann_json")
+local_path_override(
+    module_name = "nlohmann_json",
+    path = "${HOME}/.local/lib/nlohmann_json",
+)
+
+#---------------------------- bs_thread_pool --------------------------#
+bazel_dep(name = "bs_thread_pool")
+local_path_override(
+    module_name = "bs_thread_pool",
+    path = "${HOME}/.local/lib/bs_thread_pool",
+)
+
+#---------------------------- libtensorflow ---------------------------#
+bazel_dep(name = "tensorflow")
+local_path_override(
+    module_name = "tensorflow",
+    path = "${HOME}/.local/lib/libtensorflow",
+)
+
+#----------------------------- onnxruntime ----------------------------#
+bazel_dep(name = "onnxruntime")
+local_path_override(
+    module_name = "onnxruntime",
+    path = "${HOME}/.local/lib/onnxruntime",
+)
+
+#------------------------------ jemalloc ------------------------------#
+bazel_dep(name = "jemalloc")
+local_path_override(
+    module_name = "jemalloc",
+    path = "${HOME}/.local/lib/jemalloc",
+)
+
+#------------------------------ tcmalloc ------------------------------#
+# Uncomment if needed
+# bazel_dep(name = "tcmalloc")
+# local_path_override(
+#     module_name = "tcmalloc",
+#     path = "${HOME}/.local/lib/tcmalloc",
+# )

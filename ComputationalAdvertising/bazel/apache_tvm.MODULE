@@ -1,0 +1,5 @@
+module(
+  name = "apache_tvm",
+  version = "v0.15.0",
+  compatibility_level = 0,
+)

@@ -1,0 +1,5 @@
+module(
+  name = "bs_thread_pool",
+  version = "v3.5.0",
+  compatibility_level = 0
+)

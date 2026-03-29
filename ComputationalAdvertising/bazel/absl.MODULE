@@ -1,0 +1,5 @@
+module(
+  name = "com_google_absl",
+  version = "20230125.3",
+  compatibility_level = 0
+)

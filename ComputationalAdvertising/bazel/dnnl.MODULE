@@ -1,0 +1,5 @@
+module(
+  name = "dnnl",
+  version = "v3.3.3",
+  compatibility_level = 0,
+)
